@@ -1,0 +1,11 @@
+train:
+  default: yes
+  flags-import: all
+  flags-import-skip: [device]
+  output-scalars:
+    '^(\key) := (\value)'
+
+train_comp:
+  flags-import: all
+  output-scalars:
+    '^(\key) := (\value)'
