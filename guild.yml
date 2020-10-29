@@ -5,6 +5,10 @@ train:
   output-scalars:
     '^(\key) := (\value)'
 
+inspect:
+  main: inspect_weights
+  flags-import: all
+
 train_comp:
   flags-import: all
   output-scalars:

@@ -1,7 +1,7 @@
 import torch
 
 
-checkpoint = '/iris/u/em7/code/disentanglement/env/.guild/runs/1595da38d67b417fbbbd4abf61e79ee0/checkpoint.pt'
+checkpoint = '/iris/u/em7/code/disentanglement/env/.guild/runs/292806ab4448488e97eeb62bccb67217/checkpoint.pt'
 
 
 def run():
@@ -22,9 +22,13 @@ def run():
     d_b1_[d_b1_.abs() < 5e-4] = 0
 
     print('d_w0', d_w0[d_w0.abs() > 5e-4])
+    print('d_w0', torch.where(d_w0.abs() > 5e-4))
     print('d_w1', d_w1[d_w1.abs() > 5e-4])
+    print('d_w1', torch.where(d_w1.abs() > 5e-4))
     print('d_b0', d_b0[d_b0.abs() > 5e-4])
+    print('d_b0', torch.where(d_b0.abs() > 5e-4))
     print('d_b1', d_b1[d_b1.abs() > 5e-4])
+    print('d_b1', torch.where(d_b1.abs() > 5e-4))
 
     import pdb; pdb.set_trace()
 

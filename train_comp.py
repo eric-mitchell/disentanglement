@@ -13,15 +13,16 @@ from torchsummary import summary
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=128)
-parser.add_argument('--lr', type=float, default=5e-2)
+parser.add_argument('--lr', type=float, default=3e-2)
+parser.add_argument('--non_iid', action='store_true')
 parser.add_argument('--l1', type=float, default=4e-3)
 parser.add_argument('--device', type=str, default='cuda:0')
-parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--epochs', type=int, default=200)
 parser.add_argument('--name', type=str, default='compositionality')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--eps', type=float, default=5e-4)
-parser.add_argument('--warmup_steps', type=int, default=10000)
-parser.add_argument('--warmup_start', type=int, default=5000)
+parser.add_argument('--rampup_begin', type=int, default=10)
+parser.add_argument('--rampup_end', type=int, default=60)
 parser.add_argument('--warmup_l1', type=float, default=1e-4)
 parser.add_argument('--n_hidden', type=int, default=1)
 args = parser.parse_args()
@@ -44,7 +45,7 @@ def nonzero_params(model):
 
 def generate_task():
     task = {}
-    task['label'] = torch.tensor([[0,2,4,7,8]], dtype=torch.long)
+    task['label'] = torch.tensor([[0,1,2,3,4]], dtype=torch.long)
     task['rotation_low'] = 0
     task['rotation_high'] = np.pi
     task['invert'] = False
@@ -79,17 +80,21 @@ def get_features(samples: dict, entangle=False):
 def get_split_configs():
     train_config = {
         'color': {
-            0: (0, 60),   1: (20, 80),   2: (40, 100), 3: (60, 120),
-            4: (80, 120), 5: (100, 120), 6: (0, 128),  7: (40, 60),
-            8: (20, 40),  9: (60, 100),
-        }
+            **{idx: (0,60) for idx in range(0,10,2)},
+            **{idx: (60,120) for idx in range(1,10,2)}
+#            0: (0, 60),   1: (20, 80),   2: (40, 100), 3: (60, 120),
+#            4: (80, 120), 5: (100, 120), 6: (0, 128),  7: (40, 60),
+#            8: (20, 40),  9: (60, 100),
+            }
     }
 
     test_config = {
         'color': {
-            0: (60, 128),   1: (80, 128),   2: (0, 40), 3: (0, 60),
-            4: (0, 80), 5: (0, 100), 6: (60, 128),  7: (40, 128),
-            8: (40, 100),  9: (0, 60),
+            **{idx: (60,120) for idx in range(0,10,2)},
+            **{idx: (0,60) for idx in range(1,10,2)}
+#            0: (60, 128),   1: (80, 128),   2: (0, 40), 3: (0, 60),
+#            4: (0, 80), 5: (0, 100), 6: (60, 128),  7: (40, 128),
+#            8: (40, 100),  9: (0, 60),
         }
     }
 
@@ -97,14 +102,15 @@ def get_split_configs():
 
 
 def huber(p):
-    l1 = p[p.abs() > args.eps].abs() - args.eps/2
-    l2 = p[p.abs() <= args.eps].pow(2) / (args.eps*2)
+    eps = args.eps
+    l1 = p[p.abs() > eps].abs() - eps/2
+    l2 = p[p.abs() <= eps].pow(2) / (eps*2)
     return l1.sum() + l2.sum()
 
 
 def l1(model):
-    #return sum([p.abs().sum() for p in model.parameters()])
-    return sum([huber(p) for p in model.parameters()])
+    return sum([p.abs().sum() + 0.1 * p.pow(2).sum() for p in model.parameters()])
+    #return sum([huber(p) for p in model.parameters()])
 
 
 def copy_and_zero(model):
@@ -133,8 +139,11 @@ def run():
     d_opt = torch.optim.SGD(d_model.parameters(), momentum=0.9, lr=args.lr)
     step = 0
     task = generate_task()
-    e_sched = torch.optim.lr_scheduler.CosineAnnealingLR(e_opt, args.epochs)
-    d_sched = torch.optim.lr_scheduler.CosineAnnealingLR(d_opt, args.epochs)
+    #e_sched = torch.optim.lr_scheduler.CosineAnnealingLR(e_opt, args.epochs)
+    #d_sched = torch.optim.lr_scheduler.CosineAnnealingLR(d_opt, args.epochs)
+    decay_epochs = [60,90,120,150]
+    e_sched = torch.optim.lr_scheduler.MultiStepLR(e_opt, milestones=decay_epochs, gamma=0.1)
+    d_sched = torch.optim.lr_scheduler.MultiStepLR(d_opt, milestones=decay_epochs, gamma=0.1)
     for epoch in range(args.epochs):
         for idx, samples in enumerate(train_dataloader):
             features = get_features(samples).to(args.device)
@@ -148,10 +157,11 @@ def run():
             d_pred = d_out > 0
             d_acc = (d_pred == labels).float().mean()
 
-            if step <= args.warmup_start:
+            if epoch <= args.rampup_begin:
                 l1_penalty = args.warmup_l1
             else:
-                l1_penalty = args.warmup_l1 + args.l1 / (args.warmup_l1 + args.l1) * min(args.l1, args.l1 * (float(step) - args.warmup_start) / args.warmup_steps)
+                #l1_penalty = args.warmup_l1 + args.l1 / (args.warmup_l1 + args.l1) * min(args.l1, args.l1 * (float(step) - args.warmup_epochs) / args.warmup_steps)
+                l1_penalty = args.warmup_l1 + args.l1 / (args.warmup_l1 + args.l1) * min(args.l1, args.l1 * (float(epoch) - args.rampup_begin) / (args.rampup_end-args.rampup_begin))
 
             e_bce = F.binary_cross_entropy_with_logits(e_out, labels)
             el1 = l1(e_model)
@@ -212,10 +222,10 @@ def run():
                 torch.save(to_save, 'checkpoint.pt')
 
             step += 1
-        print(f'lr/e := {e_sched.get_lr()[0]}')
-        print(f'lr/d := {d_sched.get_lr()[0]}')
         e_sched.step()
         d_sched.step()
+        print(f'lr/e := {e_sched.get_lr()[0]}')
+        print(f'lr/d := {d_sched.get_lr()[0]}')
 
 if __name__ == '__main__':
     run()
