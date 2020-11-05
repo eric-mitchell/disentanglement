@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from itertools import chain
+from l0module import L0Linear, L0Conv2d, L0Sequential
 
 
 class ConvVAE(nn.Module):
@@ -12,16 +13,16 @@ class ConvVAE(nn.Module):
             nn.Conv2d(width, width, 3, 1, 1),
             nn.ReLU()
         ]
-        
+
         for _ in range(args.n_hidden - 1):
             hidden_layers.append(nn.Conv2d(width, width, 3, 1, 1))
             hidden_layers.append(nn.ReLU())
-            
+
         output_layers = [
             nn.Conv2d(width, 2, 3, 1, 1),
             LambdaLayer(lambda x: torch.mean(x, (-1, -2)))
         ]
-        
+
         self.hidden = nn.Sequential(*hidden_layers)
         self.output = nn.Sequential(*output_layers)
 
@@ -32,7 +33,7 @@ class ConvVAE(nn.Module):
 class VAE(nn.Module):
     def __init__(self, latent_dim):
         super(VAE, self).__init__()
-        
+
         self.fc1 = nn.Linear(784, 400)
         self.fc1a = nn.Linear(400, 400)
         self.fc1b = nn.Linear(400, 400)
@@ -42,7 +43,7 @@ class VAE(nn.Module):
         self.fc3a = nn.Linear(400, 400)
         self.fc3b = nn.Linear(400, 400)
         self.fc4 = nn.Linear(400, 784)
-        
+
     def encode(self, x):
         h1 = F.relu(self.fc1(x))
         h2 = F.relu(self.fc1a(h1))
@@ -71,7 +72,7 @@ class VAE(nn.Module):
         for l in [self.fc3a, self.fc3b, self.fc4]:
             params = chain(params, l.parameters())
         return params
-    
+
     def forward(self, x):
         mu, logvar = self.encode(x.view(-1, 784))
         z = self.reparameterize(mu, logvar)
@@ -101,3 +102,28 @@ class MLP(nn.Module):
         if y.shape[-1] == 1:
             y = y[:,0]
         return y
+
+class L0MLP(nn.Module):
+    def __init__(self, n_hidden: int, input_dim: int, hidden_dim: int, output_dim: int):
+        super(L0MLP, self).__init__()
+        mean = 1
+
+        if n_hidden > 0:
+            modules = []
+            modules.append(L0Linear(input_dim, hidden_dim))
+            for idx in range(n_hidden - 1):
+                if idx < n_hidden:
+                    modules.append(nn.ReLU())
+                modules.append(L0Linear(hidden_dim, hidden_dim))
+            modules.append(nn.ReLU())
+            modules.append(L0Linear(hidden_dim, output_dim))
+        else:
+            modules = [L0Linear(input_dim, output_dim)]
+
+        self.seq = L0Sequential(*modules)
+
+    def forward(self, x):
+        y, penalty = self.seq(x)
+        if y.shape[-1] == 1:
+            y = y[:,0]
+        return y, penalty
