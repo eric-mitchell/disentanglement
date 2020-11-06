@@ -24,18 +24,19 @@ parser.add_argument('--reg_coef', type=float, default=None)
 parser.add_argument('--name', type=str, default='disentanglement')
 parser.add_argument('--n_show', type=int, default=64)
 parser.add_argument('--discrim_hidden', type=int, default=100)
+parser.add_argument('--discrim_hidden', type=int, default=100)
 args = parser.parse_args()
 
 
 def loss_function(recon_x, x, mu, logvar):
     MSE = (recon_x - x).pow(2).sum() / x.shape[0]
-    
+
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # https://arxiv.org/abs/1312.6114
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.shape[0]
-    
+
     return MSE, KLD
 
 
@@ -104,7 +105,7 @@ def run():
                 discrim_grad = torch.nn.utils.clip_grad_norm(chain(discrim.parameters(), classifier.parameters()), 100)
                 discrim_opt.step()
                 discrim_opt.zero_grad()
-                
+
                 dec_pre_grad = torch.nn.utils.clip_grad_norm(vae.d_params(), 100)
 
                 discrim_out = discrim(samples)[1][-1]
@@ -130,7 +131,7 @@ def run():
 
                 original_grid = tv.utils.make_grid(sample['image'][:args.n_show], int(args.n_show**0.5))
                 tv.utils.save_image(original_grid, 'images.png')
-                
+
                 print(f'step := {step}')
                 if args.reg_coef:
                     discrim_acc = ((logits>0) == labels).float().mean()
@@ -143,7 +144,7 @@ def run():
                 print(f'kld := {kld}')
                 print(f'grad/enc := {enc_grad}')
                 print(f'grad/dec_post := {dec_post_grad}')
-                
+
             step += 1
 
 if __name__ == '__main__':
