@@ -29,7 +29,6 @@ parser.add_argument('--warmup_l1', type=float, default=1e-4)
 parser.add_argument('--n_hidden', type=int, default=1)
 parser.add_argument('--optimizer', type=str, default='sgd')
 parser.add_argument('--use_l0', type=int, default=0)
-parser.add_argument('--use_l1', type=int, default=1)
 parser.add_argument('--log_wandb', type=int, default=0)
 parser.add_argument('--input_dim', type=int, default=13)
 args = parser.parse_args()
@@ -196,19 +195,20 @@ def run():
             d_bce = F.binary_cross_entropy_with_logits(d_out, labels)
             d_loss = d_bce
 
+            # L0
             if args.use_l0:
                 l0_coef = 1e-1
                 d_loss += l0_coef * l0_d / len(samples)
                 e_loss += l0_coef * l0_e / len(samples)
 
-            if args.use_l1:
-                if epoch <= args.rampup_begin:
-                    l1_coef = args.warmup_l1
-                else:
-                    l1_coef = args.warmup_l1 + args.l1 / (args.warmup_l1 + args.l1) * min(args.l1, args.l1 * (float(epoch) - args.rampup_begin) / (args.rampup_end-args.rampup_begin))
+            # L1
+            if epoch <= args.rampup_begin:
+                l1_coef = args.warmup_l1
+            else:
+                l1_coef = args.warmup_l1 + args.l1 / (args.warmup_l1 + args.l1) * min(args.l1, args.l1 * (float(epoch) - args.rampup_begin) / (args.rampup_end-args.rampup_begin))
 
-                d_loss += l1_coef * l1(d_model)
-                e_loss += l1_coef * l1(e_model)
+            d_loss += l1_coef * l1(d_model)
+            e_loss += l1_coef * l1(e_model)
 
             e_loss.backward()
             e_grad = torch.nn.utils.clip_grad_norm_(e_model.parameters(), 100)
@@ -227,7 +227,7 @@ def run():
                 stats['train_loss/e'], stats['train_loss/d']  = e_loss, d_loss
                 stats['train_bce/e'], stats['train_bce/d']  = e_bce, d_bce
 
-                if args.use_l1:
+                if args.warmup_l1 + args.l1 > 0:
                     stats['l1_coef'] = l1_coef
 
                 d_nonzero, d_params = nonzero_params(d_model)
@@ -259,11 +259,11 @@ def run():
                     stats['val_acc/e'], stats['val_acc/d'] = e_acc, d_acc
 
                     # Fetch k wrong predictions
-                    k = 10
-                    e_wrong_mask = [e_pred != val_labels]
-                    d_wrong_mask = [d_pred != val_labels]
-                    wrong_preds_e, ftrs_e = e_out[e_wrong_mask][:k], val_entangled_features[:k]
-                    wrong_preds_d, ftrs_d = d_out[d_wrong_mask][:k], val_features[:k]
+                    #k = 10
+                    #e_wrong_mask = [e_pred != val_labels]
+                    #d_wrong_mask = [d_pred != val_labels]
+                    #wrong_preds_e, ftrs_e = e_out[e_wrong_mask][:k], val_entangled_features[:k]
+                    #wrong_preds_d, ftrs_d = d_out[d_wrong_mask][:k], val_features[:k]
 
                 to_save = {
                     'd_model': d_model.state_dict(),
